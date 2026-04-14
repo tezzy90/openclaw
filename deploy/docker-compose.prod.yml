@@ -52,9 +52,10 @@ services:
       # Ollama (if running on host)
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
     volumes:
-      # Persistent config and workspace
-      - openclaw-config:/home/node/.openclaw
-      - openclaw-workspace:/home/node/.openclaw/workspace
+      # Bind mounts to host directories (solves permission issues on macOS/Linux)
+      # Set OPENCLAW_CONFIG_DIR and OPENCLAW_WORKSPACE_DIR in .env to paths you own
+      - ${OPENCLAW_CONFIG_DIR:-./data/config}:/home/node/.openclaw
+      - ${OPENCLAW_WORKSPACE_DIR:-./data/workspace}:/home/node/.openclaw/workspace
     ports:
       - "${OPENCLAW_GATEWAY_PORT:-18789}:18789"
       - "${OPENCLAW_BRIDGE_PORT:-18790}:18790"
@@ -96,8 +97,8 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     volumes:
-      - openclaw-config:/home/node/.openclaw
-      - openclaw-workspace:/home/node/.openclaw/workspace
+      - ${OPENCLAW_CONFIG_DIR:-./data/config}:/home/node/.openclaw
+      - ${OPENCLAW_WORKSPACE_DIR:-./data/workspace}:/home/node/.openclaw/workspace
     extra_hosts:
       - "host.docker.internal:host-gateway"
     stdin_open: true
@@ -124,8 +125,6 @@ services:
         max-size: "10m"
         max-file: "3"
 
-volumes:
-  openclaw-config:
-    name: openclaw-config
-  openclaw-workspace:
-    name: openclaw-workspace
+# Using bind mounts to host directories instead of named volumes
+# to avoid permission issues on macOS/Linux. The host directories
+# are created by start.sh with your user ownership.

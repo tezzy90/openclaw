@@ -49,8 +49,28 @@ check_deps() {
   fi
 }
 
+ensure_data_dirs() {
+  # Load config/workspace paths from .env, with defaults matching compose file
+  local config_dir workspace_dir
+  config_dir="$(grep '^OPENCLAW_CONFIG_DIR=' "$ENV_FILE" 2>/dev/null | cut -d= -f2-)"
+  workspace_dir="$(grep '^OPENCLAW_WORKSPACE_DIR=' "$ENV_FILE" 2>/dev/null | cut -d= -f2-)"
+  config_dir="${config_dir:-$SCRIPT_DIR/data/config}"
+  workspace_dir="${workspace_dir:-$SCRIPT_DIR/data/workspace}"
+
+  # Expand ~ to $HOME if present
+  config_dir="${config_dir/#\~/$HOME}"
+  workspace_dir="${workspace_dir/#\~/$HOME}"
+
+  # Create directories owned by the current user
+  mkdir -p "$config_dir" "$workspace_dir"
+  log "Data directories ready:"
+  log "  Config:    $config_dir"
+  log "  Workspace: $workspace_dir"
+}
+
 cmd_setup() {
   check_deps
+  ensure_data_dirs
   log "Pulling latest OpenClaw Docker image from ghcr.io..."
   compose pull openclaw-gateway
 
@@ -85,6 +105,7 @@ cmd_update() {
 
 cmd_start() {
   check_deps
+  ensure_data_dirs
   local profiles=()
 
   if [[ "${1:-}" == "--browser" ]]; then
