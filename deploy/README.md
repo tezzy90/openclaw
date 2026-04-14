@@ -3,6 +3,17 @@
 Production-ready Docker setup for running OpenClaw as an always-on autonomous
 agent system.
 
+## ⚠️ Important: Claude Subscription Policy (April 2026)
+
+As of **April 4, 2026**, Anthropic's TOS prohibits using Claude Pro/Max OAuth
+tokens in third-party tools like OpenClaw. Your Claude Pro/Max subscription
+CANNOT power OpenClaw's agents. You need a separate Anthropic API key
+(pay-as-you-go via Claude Console) if you want Claude models here.
+
+**Recommended approach:** Use DeepSeek API (cheap reasoning) + local Ollama
+(free) for the agent runtime. Keep your Claude subscription for direct use
+via Claude Code, claude.ai, and Claude Desktop.
+
 ## Quick Start
 
 ```bash
