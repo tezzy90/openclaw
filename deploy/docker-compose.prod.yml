@@ -1,0 +1,128 @@
+# OpenClaw Production Docker Compose
+#
+# Usage:
+#   cp .env.production.example .env
+#   # Edit .env with your API keys and tokens
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Services:
+#   - openclaw-gateway: Always-on AI gateway (core)
+#   - openclaw-browser: Headless browser sandbox for web research (optional)
+#
+# Ports:
+#   - 18789: Gateway API/WebSocket (dashboard at http://localhost:18789)
+#   - 18790: Internal bridge
+#   - 9222:  Chrome DevTools Protocol (browser sandbox)
+#   - 6080:  noVNC web viewer (browser sandbox, for debugging)
+
+services:
+  # ─── Core Gateway ─────────────────────────────────────────────
+  openclaw-gateway:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        # Include Chromium for built-in browser_tool (~300MB larger image)
+        OPENCLAW_INSTALL_BROWSER: "1"
+    image: ${OPENCLAW_IMAGE:-openclaw:prod}
+    container_name: openclaw-gateway
+    environment:
+      HOME: /home/node
+      TERM: xterm-256color
+      NODE_ENV: production
+
+      # Gateway auth
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
+
+      # Model provider keys - set at least one
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+
+      # Channel tokens
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+
+      # Tools
+      BRAVE_API_KEY: ${BRAVE_API_KEY:-}
+
+      # Ollama (if running on host or separate container)
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+    volumes:
+      # Persistent config and data
+      - openclaw-config:/home/node/.openclaw
+      - openclaw-workspace:/home/node/.openclaw/workspace
+      # Mount host config if you prefer file-based management
+      # - ${OPENCLAW_CONFIG_DIR:-~/.openclaw}:/home/node/.openclaw
+      # - ${OPENCLAW_WORKSPACE_DIR:-~/.openclaw/workspace}:/home/node/.openclaw/workspace
+    ports:
+      - "${OPENCLAW_GATEWAY_PORT:-18789}:18789"
+      - "${OPENCLAW_BRIDGE_PORT:-18790}:18790"
+    restart: unless-stopped
+    init: true
+    healthcheck:
+      test: ["CMD", "node", "dist/index.js", "health", "--token", "${OPENCLAW_GATEWAY_TOKEN}"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    command:
+      [
+        "node", "dist/index.js", "gateway",
+        "--bind", "${OPENCLAW_GATEWAY_BIND:-lan}",
+        "--port", "18789",
+      ]
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # ─── CLI (on-demand, for management commands) ────────────────
+  openclaw-cli:
+    image: ${OPENCLAW_IMAGE:-openclaw:prod}
+    container_name: openclaw-cli
+    profiles: ["cli"]
+    environment:
+      HOME: /home/node
+      TERM: xterm-256color
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
+      BROWSER: echo
+    volumes:
+      - openclaw-config:/home/node/.openclaw
+      - openclaw-workspace:/home/node/.openclaw/workspace
+    stdin_open: true
+    tty: true
+    init: true
+    entrypoint: ["node", "dist/index.js"]
+
+  # ─── Browser Sandbox (optional, for visual debugging) ────────
+  openclaw-browser:
+    build:
+      context: ..
+      dockerfile: Dockerfile.sandbox-browser
+    image: openclaw-sandbox-browser:prod
+    container_name: openclaw-browser
+    profiles: ["browser"]
+    ports:
+      - "${OPENCLAW_BROWSER_CDP_PORT:-9222}:9222"
+      - "${OPENCLAW_BROWSER_NOVNC_PORT:-6080}:6080"
+    environment:
+      OPENCLAW_BROWSER_HEADLESS: "0"
+      OPENCLAW_BROWSER_ENABLE_NOVNC: "1"
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  openclaw-config:
+    name: openclaw-config
+  openclaw-workspace:
+    name: openclaw-workspace
