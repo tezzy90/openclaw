@@ -51,8 +51,8 @@ check_deps() {
 
 cmd_setup() {
   check_deps
-  log "Building OpenClaw Docker image (this takes a few minutes)..."
-  compose build openclaw-gateway
+  log "Pulling latest OpenClaw Docker image from ghcr.io..."
+  compose pull openclaw-gateway
 
   # Generate token if still default
   if grep -q "change-me" "$ENV_FILE" 2>/dev/null; then
@@ -72,6 +72,15 @@ cmd_setup() {
 
   log ""
   log "Setup complete. Start with: ./start.sh"
+}
+
+cmd_update() {
+  check_deps
+  log "Pulling latest OpenClaw image..."
+  compose pull
+  log "Restarting services with new image..."
+  compose --profile browser up -d
+  log "Update complete."
 }
 
 cmd_start() {
@@ -128,6 +137,9 @@ case "${1:-}" in
   --setup)
     cmd_setup
     ;;
+  --update)
+    cmd_update
+    ;;
   --stop)
     cmd_stop
     ;;
@@ -148,7 +160,7 @@ case "${1:-}" in
     cmd_start
     ;;
   *)
-    echo "Usage: $0 [--setup|--start|--browser|--stop|--status|--logs|--cli]"
+    echo "Usage: $0 [--setup|--update|--start|--browser|--stop|--status|--logs|--cli]"
     exit 1
     ;;
 esac

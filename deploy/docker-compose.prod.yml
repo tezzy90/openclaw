@@ -1,31 +1,30 @@
-# OpenClaw Production Docker Compose
+# OpenClaw Production Docker Compose (Uses Official Latest Image)
+#
+# This compose file pulls the OFFICIAL OpenClaw Docker image from GitHub
+# Container Registry, so you always get the latest stable release —
+# independent of this fork's source code version.
 #
 # Usage:
 #   cp .env.production.example .env
 #   # Edit .env with your API keys and tokens
+#   docker compose -f docker-compose.prod.yml pull     # get latest
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# To upgrade to a new release:
+#   docker compose -f docker-compose.prod.yml pull
 #   docker compose -f docker-compose.prod.yml up -d
 #
 # Services:
-#   - openclaw-gateway: Always-on AI gateway (core)
-#   - openclaw-browser: Headless browser sandbox for web research (optional)
-#
-# Ports:
-#   - 18789: Gateway API/WebSocket (dashboard at http://localhost:18789)
-#   - 18790: Internal bridge
-#   - 9222:  Chrome DevTools Protocol (browser sandbox)
-#   - 6080:  noVNC web viewer (browser sandbox, for debugging)
+#   - openclaw-gateway: Always-on AI gateway (core) - port 18789
+#   - openclaw-cli:     On-demand CLI for management
+#   - openclaw-browser: Headless browser sandbox with VNC (optional, port 6080)
 
 services:
   # ─── Core Gateway ─────────────────────────────────────────────
   openclaw-gateway:
-    build:
-      context: ..
-      dockerfile: Dockerfile
-      args:
-        # Include Chromium for built-in browser_tool (~300MB larger image)
-        OPENCLAW_INSTALL_BROWSER: "1"
-    image: ${OPENCLAW_IMAGE:-openclaw:prod}
+    image: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:latest}
     container_name: openclaw-gateway
+    pull_policy: always
     environment:
       HOME: /home/node
       TERM: xterm-256color
@@ -34,12 +33,12 @@ services:
       # Gateway auth
       OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
 
-      # Model provider keys - set at least one
+      # Model provider keys - set at least one in .env
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
 
       # Channel tokens
       SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
@@ -50,20 +49,20 @@ services:
       # Tools
       BRAVE_API_KEY: ${BRAVE_API_KEY:-}
 
-      # Ollama (if running on host or separate container)
+      # Ollama (if running on host)
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
     volumes:
-      # Persistent config and data
+      # Persistent config and workspace
       - openclaw-config:/home/node/.openclaw
       - openclaw-workspace:/home/node/.openclaw/workspace
-      # Mount host config if you prefer file-based management
-      # - ${OPENCLAW_CONFIG_DIR:-~/.openclaw}:/home/node/.openclaw
-      # - ${OPENCLAW_WORKSPACE_DIR:-~/.openclaw/workspace}:/home/node/.openclaw/workspace
     ports:
       - "${OPENCLAW_GATEWAY_PORT:-18789}:18789"
       - "${OPENCLAW_BRIDGE_PORT:-18790}:18790"
     restart: unless-stopped
     init: true
+    extra_hosts:
+      # Allow container to reach Ollama running on the host (Mac/Linux)
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "node", "dist/index.js", "health", "--token", "${OPENCLAW_GATEWAY_TOKEN}"]
       interval: 60s
@@ -84,7 +83,7 @@ services:
 
   # ─── CLI (on-demand, for management commands) ────────────────
   openclaw-cli:
-    image: ${OPENCLAW_IMAGE:-openclaw:prod}
+    image: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:latest}
     container_name: openclaw-cli
     profiles: ["cli"]
     environment:
@@ -92,9 +91,15 @@ services:
       TERM: xterm-256color
       OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
       BROWSER: echo
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     volumes:
       - openclaw-config:/home/node/.openclaw
       - openclaw-workspace:/home/node/.openclaw/workspace
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     stdin_open: true
     tty: true
     init: true
@@ -102,12 +107,10 @@ services:
 
   # ─── Browser Sandbox (optional, for visual debugging) ────────
   openclaw-browser:
-    build:
-      context: ..
-      dockerfile: Dockerfile.sandbox-browser
-    image: openclaw-sandbox-browser:prod
+    image: ${OPENCLAW_BROWSER_IMAGE:-ghcr.io/openclaw/openclaw-sandbox-browser:latest}
     container_name: openclaw-browser
     profiles: ["browser"]
+    pull_policy: always
     ports:
       - "${OPENCLAW_BROWSER_CDP_PORT:-9222}:9222"
       - "${OPENCLAW_BROWSER_NOVNC_PORT:-6080}:6080"

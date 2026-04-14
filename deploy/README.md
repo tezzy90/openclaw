@@ -1,7 +1,9 @@
 # OpenClaw Production Deployment
 
 Production-ready Docker setup for running OpenClaw as an always-on autonomous
-agent system.
+agent system. **Uses the official `ghcr.io/openclaw/openclaw:latest` image
+from GitHub Container Registry** — always the latest stable release,
+independent of this fork's source code.
 
 ## ⚠️ Important: Claude Subscription Policy (April 2026)
 
@@ -21,7 +23,7 @@ via Claude Code, claude.ai, and Claude Desktop.
 cp .env.production.example .env
 # Edit .env with your API keys (at minimum: one LLM provider + gateway token)
 
-# 2. First-time setup (builds image + runs onboarding)
+# 2. First-time setup (pulls latest image + runs onboarding)
 ./start.sh --setup
 
 # 3. Start the gateway
@@ -35,13 +37,30 @@ open http://localhost:18789
 
 | Command | What it does |
 |---|---|
-| `./start.sh --setup` | First-time build + onboarding wizard |
+| `./start.sh --setup` | First-time image pull + onboarding wizard |
 | `./start.sh` | Start gateway (default) |
 | `./start.sh --browser` | Start gateway + browser sandbox with VNC |
+| `./start.sh --update` | Pull latest image and restart |
 | `./start.sh --stop` | Stop all services |
 | `./start.sh --status` | Health check |
 | `./start.sh --logs` | Tail gateway logs |
 | `./start.sh --cli <cmd>` | Run any openclaw CLI command |
+
+## Why This Setup Is Different
+
+This deployment **does not build from the source code in this repository**.
+Instead, it pulls the official pre-built image from GitHub Container Registry:
+
+- `ghcr.io/openclaw/openclaw:latest` — always the newest stable release
+- Maintained by the OpenClaw team
+- Typically a few hundred MB vs the ~1.5GB you'd get building from source
+- One command to upgrade: `./start.sh --update`
+
+You can pin to a specific version if you want stability:
+```bash
+# In .env:
+OPENCLAW_IMAGE=ghcr.io/openclaw/openclaw:2026.4.14
+```
 
 ## Adding Agents
 
@@ -60,6 +79,7 @@ open http://localhost:18789
 
 ```bash
 # Slack (recommended - needs bot token + app token in .env)
+# See SLACK-SETUP.md for the step-by-step Slack app creation guide
 ./start.sh --cli channels add --channel slack
 
 # Telegram
@@ -76,12 +96,24 @@ Once running, tell your agent in Slack:
   notify me of new listings"
 - The agent will use its built-in cron_tool to schedule this automatically
 
+## Upgrading
+
+When a new OpenClaw release comes out (they release frequently — typically
+weekly or more):
+
+```bash
+./start.sh --update
+```
+
+This pulls the latest image, recreates containers, and preserves all your
+data (agents, sessions, memory) in Docker volumes.
+
 ## Architecture
 
 ```
 docker-compose.prod.yml
   |
-  |- openclaw-gateway     (always-on, port 18789)
+  |- openclaw-gateway     (official image, always-on, port 18789)
   |    |- Slack/Telegram/Discord connections
   |    |- Agent runtime (tool-calling loop)
   |    |- Cron scheduler
@@ -90,19 +122,24 @@ docker-compose.prod.yml
   |
   |- openclaw-cli         (on-demand, for management)
   |
-  |- openclaw-browser     (optional, VNC debugging)
-       |- Chromium + noVNC viewer on port 6080
+  |- openclaw-browser     (optional, VNC debugging, port 6080)
+       |- Chromium + noVNC viewer
+
+Docker Volumes (persistent across restarts):
+  |- openclaw-config      (gateway config, auth, sessions)
+  |- openclaw-workspace   (agent workspaces, memory, files)
 ```
 
 ## Files
 
 | File | Purpose |
 |---|---|
-| `docker-compose.prod.yml` | Production compose with all services |
+| `docker-compose.prod.yml` | Production compose using official image |
 | `.env.production.example` | Template - copy to `.env` and fill in |
 | `start.sh` | Convenience wrapper for common operations |
-| `workspace/SOUL.md` | Agent personality and principles |
-| `workspace/USER.md` | Your preferences and budget rules |
+| `SLACK-SETUP.md` | Step-by-step Slack app creation guide |
+| `workspace/SOUL.md` | Agent personality template |
+| `workspace/USER.md.example` | Your preferences template |
 
 ## Using Local Ollama
 
@@ -112,31 +149,42 @@ If you run Ollama on the host machine (e.g., Mac Studio):
 # Start Ollama and pull a model
 ollama pull gemma2:27b
 
-# The .env already points to host.docker.internal:11434
-# Set it as the default model:
+# The compose file already has extra_hosts: host.docker.internal:host-gateway
+# which lets the container reach Ollama on your Mac.
+# Set Ollama model as default:
 ./start.sh --cli models set ollama/gemma2:27b
 ```
 
 ## Deploying to Google Cloud Run
 
-When you're ready to move to the cloud:
+When you're ready to move to the cloud, you can use the same official image:
 
 ```bash
-# Build and push to Google Container Registry
-docker build -t gcr.io/YOUR_PROJECT/openclaw:latest \
-  --build-arg OPENCLAW_INSTALL_BROWSER=1 \
-  -f ../Dockerfile ..
-
-docker push gcr.io/YOUR_PROJECT/openclaw:latest
-
-# Deploy to Cloud Run
 gcloud run deploy openclaw \
-  --image gcr.io/YOUR_PROJECT/openclaw:latest \
+  --image=ghcr.io/openclaw/openclaw:latest \
   --min-instances=1 \
   --memory=2Gi \
   --port=18789 \
   --set-env-vars="OPENCLAW_GATEWAY_TOKEN=your-token,DEEPSEEK_API_KEY=your-key"
 ```
 
-Note: For Cloud Run, use a managed database (Cloud SQL/Firestore) for
-persistent state instead of Docker volumes.
+Note: For Cloud Run, you'll need a managed database (Cloud SQL/Firestore)
+for persistent state instead of Docker volumes.
+
+## Troubleshooting
+
+**Gateway won't start:**
+```bash
+./start.sh --logs              # See what's failing
+./start.sh --cli health --json # Detailed health status
+```
+
+**Image pull fails:**
+```bash
+# Check Docker can reach ghcr.io
+docker pull ghcr.io/openclaw/openclaw:latest
+```
+
+**Can't connect from host:**
+The gateway binds to `lan` mode by default (accessible from host).
+If you changed it to `loopback`, only the container can reach it.
