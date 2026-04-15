@@ -115,7 +115,7 @@ cmd_start() {
     log "Starting gateway..."
   fi
 
-  compose "${profiles[@]}" up -d
+  compose ${profiles[@]+"${profiles[@]}"} up -d
 
   log ""
   log "OpenClaw is running."

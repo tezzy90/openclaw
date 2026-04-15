@@ -1,0 +1,2 @@
+# Runtime bind-mount data (contains secrets/tokens)
+data/
